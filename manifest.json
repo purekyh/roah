@@ -1,0 +1,21 @@
+{
+  "name": "로아의 수학놀이",
+  "short_name": "로아수학놀이",
+  "description": "로아의 수학 학습 게임 🌟",
+  "start_url": "/roah/",
+  "scope": "/roah/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF5FA",
+  "theme_color": "#FF6B9D",
+  "lang": "ko",
+  "categories": ["education", "games"],
+  "icons": [
+    {
+      "src": "https://purekyh.github.io/roah/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
