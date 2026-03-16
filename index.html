@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="로아수학놀이">
 <meta name="theme-color" content="#FF6B9D">
 <title>로아의 수학놀이 🌟</title>
-<link rel="manifest" href="/roah/manifest.json">
+<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" id="apple-icon" href="#">
 <link rel="apple-touch-icon" sizes="152x152" href="/roah/icons/icon-152x152.png">
 <style>
@@ -149,6 +149,28 @@ body{font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#FFF
 .rank-name-wrap .label{font-size:13px;font-weight:700;color:#9C27B0;margin-bottom:8px}
 .online-dot{display:inline-block;width:7px;height:7px;background:#4CAF50;border-radius:50%;margin-right:4px;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── MONTHLY RANKING ── */
+.month-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;scrollbar-width:none}
+.month-tabs::-webkit-scrollbar{display:none}
+.month-tab{background:white;border:1.5px solid #E8D8F0;border-radius:16px;padding:5px 14px;font-size:12px;font-weight:700;color:#BA90C0;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
+.month-tab.active{background:#9C27B0;border-color:#9C27B0;color:white}
+
+/* ── RANK UP ANIMATION ── */
+.rank-up-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:600;pointer-events:none}
+.rank-up-box{background:white;border-radius:28px;padding:28px 36px;text-align:center;max-width:300px;width:88%;box-shadow:0 20px 60px rgba(156,39,176,.3);animation:rankUpPop .5s cubic-bezier(.34,1.56,.64,1)}
+@keyframes rankUpPop{from{transform:scale(.3) translateY(40px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.rank-up-badge{font-size:56px;margin-bottom:8px;animation:spinBounce .6s ease .3s both}
+@keyframes spinBounce{0%{transform:rotate(-20deg) scale(.5)}60%{transform:rotate(10deg) scale(1.2)}100%{transform:rotate(0) scale(1)}}
+.rank-up-title{font-size:22px;font-weight:900;color:#9C27B0;margin-bottom:4px}
+.rank-up-pos{font-size:48px;font-weight:900;color:#FF6B9D;line-height:1}
+.rank-up-sub{font-size:14px;font-weight:700;color:#CE93D8;margin-top:4px}
+.rank-arrow{color:#4CAF50;font-size:20px;font-weight:900;margin:0 6px}
+
+/* rank row entrance animation */
+.rank-row.new-entry{animation:slideInRow .4s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes slideInRow{from{transform:translateX(-30px) scale(.95);opacity:0}to{transform:none;opacity:1}}
+.rank-row.rank-up-row{background:linear-gradient(90deg,#F9F0FF,white)!important;border-color:#9C27B0!important}
 </style>
 </head>
 <body>
@@ -680,20 +702,65 @@ function saveRankLocal(){
   try{localStorage.setItem('roah_ranks_v5',JSON.stringify(localRankings));}catch(e){}
 }
 
+function getMonthKey(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
 function saveRankGlobal(){
   if(!db)return;
   const name=getPlayerName()||'익명';
-  const entry={
-    name: name,
-    score: S.score,
-    lv: S.lv,
-    correct: S.correct,
-    combo: S.maxCombo,
-    ts: Date.now()
-  };
+  const monthKey=getMonthKey();
+  const entry={name,score:S.score,lv:S.lv,correct:S.correct,combo:S.maxCombo,ts:Date.now()};
   try{
-    db.ref('rankings').push(entry);
+    db.ref('rankings/'+monthKey).push(entry)
+      .then(function(){
+        // Check rank change after save
+        checkRankChange(monthKey, S.score, name);
+      });
   }catch(e){console.warn('Firebase save failed:',e);}
+}
+function checkRankChange(monthKey, myScore, myName){
+  if(!db)return;
+  db.ref('rankings/'+monthKey).orderByChild('score').limitToLast(100).once('value')
+    .then(function(snap){
+      const data=snap.val();
+      if(!data)return;
+      const sorted=Object.values(data).sort(function(a,b){return b.score-a.score;});
+      const myRank=sorted.findIndex(function(r){return r.name===myName&&r.score===myScore;});
+      if(myRank>=0&&myRank<20){
+        showRankUpAnimation(myRank+1, sorted.length);
+      }
+    }).catch(function(){});
+}
+function showRankUpAnimation(newRank, total){
+  // Remove existing
+  var existing=document.getElementById('rank-up-overlay');
+  if(existing)existing.remove();
+
+  var medal=newRank===1?'🥇':newRank===2?'🥈':newRank===3?'🥉':newRank<=10?'🏅':'⭐';
+  var title=newRank===1?'🎉 1위 달성!!':newRank<=3?'🏆 TOP 3 진입!':newRank<=10?'🌟 TOP 10 진입!':'랭킹 등록!';
+
+  var div=document.createElement('div');
+  div.id='rank-up-overlay';
+  div.className='rank-up-overlay';
+  div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:600;cursor:pointer';
+  div.innerHTML='<div class="rank-up-box">'
+    +'<div class="rank-up-badge">'+medal+'</div>'
+    +'<div class="rank-up-title">'+title+'</div>'
+    +'<div class="rank-up-pos">#'+newRank+'</div>'
+    +'<div class="rank-up-sub">전체 '+total+'명 중</div>'
+    +'<div style="margin-top:14px;font-size:13px;color:#CE93D8;font-weight:700;animation:tapBlink 1s infinite">👆 터치해서 닫기</div>'
+    +'</div>';
+  div.onclick=function(){div.remove();};
+  document.body.appendChild(div);
+
+  // Confetti if top 3
+  if(newRank<=3)launchConfetti(80);
+  // Play fanfare if #1
+  if(newRank===1)setTimeout(playFanfare,200);
+
+  // Auto close after 4s
+  setTimeout(function(){if(div.parentNode)div.remove();},4000);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -733,51 +800,73 @@ function renderLocalRanking(){
     </div>`).join('');
 }
 
+function getAvailableMonths(){
+  // Return last 6 months including current
+  const months=[];
+  const now=new Date();
+  for(let i=0;i<6;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    months.push(key);
+  }
+  return months;
+}
+let currentMonth=getMonthKey();
 function renderGlobalRanking(){
   const el=document.getElementById('rank-list');
   const status=document.getElementById('rank-status');
-
   if(!db){
     status.textContent='⚠️ 오프라인 상태예요';
-    el.innerHTML=`<div style="text-align:center;padding:32px;color:#CE93D8;font-weight:700">인터넷 연결을 확인해주세요</div>`;
+    el.innerHTML='<div style="text-align:center;padding:32px;color:#CE93D8;font-weight:700">인터넷 연결을 확인해주세요</div>';
     return;
   }
-
-  status.innerHTML=`<span class="online-dot"></span>${t('globalOnline')}`;
-  el.innerHTML=`<div style="text-align:center;padding:24px;color:#CE93D8;font-weight:700">${t('globalLoading')}</div>`;
-
+  // Build month tabs
+  const months=getAvailableMonths();
+  const monthTabsHtml=months.map(function(m){
+    const label=m===getMonthKey()?'이번 달 ('+m+')':m;
+    return '<button class="month-tab'+(m===currentMonth?' active':'')+('" data-m="'+m+'" onclick="selectMonth(this.dataset.m)">'+label+'</button>');
+  }).join('');
+  status.innerHTML='<span class="online-dot"></span>'+t('globalOnline')
+    +'<div class="month-tabs" style="margin-top:8px">'+monthTabsHtml+'</div>';
+  loadMonthRanking(currentMonth);
+}
+function selectMonth(m){
+  currentMonth=m;
+  renderGlobalRanking();
+}
+function loadMonthRanking(monthKey){
+  const el=document.getElementById('rank-list');
   const myName=getPlayerName()||'익명';
-
-  // Load top 50, sort by score, show top 20
-  db.ref('rankings').orderByChild('score').limitToLast(50).once('value')
-    .then(snap=>{
+  el.innerHTML='<div style="text-align:center;padding:24px;color:#CE93D8;font-weight:700">'+t('globalLoading')+'</div>';
+  db.ref('rankings/'+monthKey).orderByChild('score').limitToLast(100).once('value')
+    .then(function(snap){
       const data=snap.val();
       if(!data){
-        el.innerHTML=`<div style="text-align:center;padding:32px;color:#CE93D8;font-weight:700;white-space:pre-line">${t('globalEmpty')}</div>`;
+        el.innerHTML='<div style="text-align:center;padding:32px;color:#CE93D8;font-weight:700;white-space:pre-line">'+t('globalEmpty')+'</div>';
         return;
       }
-      // Convert to array and sort
-      const rows=Object.values(data)
-        .sort((a,b)=>b.score-a.score)
-        .slice(0,20);
-
-      el.innerHTML=rows.map((r,i)=>{
+      const rows=Object.values(data).sort(function(a,b){return b.score-a.score;}).slice(0,20);
+      el.innerHTML=rows.map(function(r,i){
         const isMe=r.name===myName;
-        const medal=MEDALS[i]||String(i+1);
+        const medal=MEDALS[i]||(i+1);
+        const medalColor=i<3?'#FFB300':'#B0BEC5';
         const dateStr=r.ts?new Date(r.ts).toLocaleDateString('ko-KR'):'';
-        return `<div class="rank-row ${isMe?'my-row':'global-row'}">
-          <div class="rank-n" style="color:${i<3?'#FFB300':'#B0BEC5'}">${medal}</div>
-          <div class="rank-info">
-            <div class="main">${r.name||'익명'} &nbsp; Lv.${r.lv} &nbsp; ${r.correct}/10</div>
-            <div class="sub">콤보 ${r.combo} · ${dateStr}</div>
-          </div>
-          <div class="rank-pts">${r.score}<span style="font-size:11px;color:#CE93D8">${t('pts')}</span></div>
-        </div>`;
+        const rowClass='rank-row '+(isMe?'my-row':'global-row')+' new-entry';
+        const animDelay=i*0.05;
+        return '<div class="'+rowClass+'" style="animation-delay:'+animDelay+'s">'
+          +'<div class="rank-n" style="color:'+medalColor+'">'+medal+'</div>'
+          +'<div class="rank-info">'
+          +'<div class="main" style="font-size:15px">'+((r.name||'?'))+(isMe?' 👈':'')+'</div>'
+          +'<div class="sub">'
+          +'<span style="background:#F3E5F5;color:#9C27B0;border-radius:8px;padding:1px 7px;font-weight:900;margin-right:4px">Lv.'+r.lv+'</span>'
+          +r.correct+'/10 &middot; 콤보'+r.combo+' &middot; '+dateStr
+          +'</div></div>'
+          +'<div class="rank-pts">'+r.score+'<span style="font-size:11px;color:#CE93D8">'+t('pts')+'</span></div>'
+          +'</div>';
       }).join('');
     })
-    .catch(err=>{
-      status.textContent='⚠️ 불러오기 실패';
-      el.innerHTML=`<div style="text-align:center;padding:24px;color:#E53935;font-weight:700">연결 오류가 발생했어요</div>`;
+    .catch(function(err){
+      el.innerHTML='<div style="text-align:center;padding:24px;color:#E53935;font-weight:700">연결 오류가 발생했어요</div>';
     });
 }
 
