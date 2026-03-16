@@ -213,6 +213,31 @@ body{font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#FFF
   border-top-color:#FF6B9D;
   border-bottom:none;
 }
+
+/* ── TIMER ── */
+.timer-wrap{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px}
+.timer-bar-bg{flex:1;height:8px;background:#EDE7F6;border-radius:10px;overflow:hidden;max-width:260px}
+.timer-bar-fill{height:100%;background:linear-gradient(90deg,#9C27B0,#FF6B9D);border-radius:10px;transition:width .2s linear}
+.timer-num{font-size:15px;font-weight:900;color:#9C27B0;min-width:28px;text-align:right}
+
+/* 5초 이하 경고 */
+.timer-wrap.urgent .timer-bar-fill{background:linear-gradient(90deg,#E53935,#FF6B9D)!important;animation:timerPulse .5s ease-in-out infinite}
+.timer-wrap.urgent .timer-num{color:#E53935;animation:timerPulse .5s ease-in-out infinite}
+@keyframes timerPulse{0%,100%{opacity:1}50%{opacity:.4}}
+.choices.urgent .choice:not(:disabled){
+  animation:choiceShake .4s ease-in-out infinite alternate;
+  border-color:#FF8A80!important;
+}
+@keyframes choiceShake{0%{transform:scale(1)}100%{transform:scale(1.03)}}
+
+/* ── PATCH NOTE POPUP ── */
+.patch-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:700}
+.patch-box{background:white;border-radius:24px;padding:28px 28px 20px;max-width:320px;width:90%;animation:popIn .4s cubic-bezier(.34,1.56,.64,1)}
+.patch-title{font-size:11px;font-weight:700;color:#CE93D8;margin-bottom:4px}
+.patch-ver{font-size:18px;font-weight:900;color:#9C27B0;margin-bottom:14px}
+.patch-content{font-size:14px;font-weight:700;color:#555;line-height:1.7;margin-bottom:18px;background:#F9F0FF;border-radius:12px;padding:12px 14px}
+.patch-close{background:#9C27B0;color:white;border:none;border-radius:20px;padding:11px 0;font-size:15px;font-weight:900;cursor:pointer;width:100%}
+.patch-close:active{transform:scale(.97)}
 </style>
 </head>
 <body>
@@ -246,6 +271,10 @@ body{font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#FFF
       <div class="chip-score" id="chip-score">0점</div>
     </div>
     <div class="combo-zone"><div class="combo-badge" id="combo-badge"></div></div>
+    <div class="timer-wrap" id="timer-wrap">
+      <div class="timer-bar-bg"><div class="timer-bar-fill" id="timer-bar" style="width:100%"></div></div>
+      <div class="timer-num" id="timer-num">20</div>
+    </div>
     <div class="q-card">
       <div class="q-label" id="q-label">로아 문제 1</div>
       <div class="q-math" id="q-math">5 + 3 = ?</div>
@@ -559,6 +588,7 @@ function launchConfetti(n){
 // ═══════════════════════════════════════════════════════════
 const MEDALS=['🥇','🥈','🥉'];
 let S={lv:1,qs:[],idx:0,score:0,combo:0,maxCombo:0,correct:0,baseScore:0,comboBonus:0,perfectBonus:0,answered:false,hintsLeft:3};
+let _timerInterval=null,_timerSec=20;
 let localRankings=(function(){try{return JSON.parse(localStorage.getItem('roah_ranks_v5')||'[]');}catch(e){return[];}}());
 let deferredPrompt=null;
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
@@ -623,6 +653,63 @@ function confirmName(lv){
   S={lv,qs:Array.from({length:10},()=>genQ(lv)),idx:0,score:0,combo:0,maxCombo:0,correct:0,baseScore:0,comboBonus:0,perfectBonus:0,answered:false,hintsLeft:3};
   showScreen('game-screen');renderQ();
 }
+
+const TIMER_MAX=20;
+function startTimer(){
+  stopTimer();
+  _timerSec=TIMER_MAX;
+  updateTimerUI();
+  _timerInterval=setInterval(function(){
+    _timerSec--;
+    updateTimerUI();
+    if(_timerSec<=0){
+      stopTimer();
+      // Time's up — treat as wrong answer
+      if(!S.answered){
+        S.answered=true;
+        S.combo=0;
+        document.querySelectorAll('.choice').forEach(function(b){
+          b.disabled=true;
+          if(+b.textContent===S.qs[S.idx].answer)b.classList.add('correct');
+        });
+        playWrong();
+        showReaction(false,0);
+        document.getElementById('chip-score').textContent=S.score+t('pts');
+        S._timer=setTimeout(function(){advanceFromReaction();},2940);
+      }
+    }
+  },1000);
+}
+function stopTimer(){
+  if(_timerInterval){clearInterval(_timerInterval);_timerInterval=null;}
+  // Remove urgent state
+  var tw=document.getElementById('timer-wrap');
+  var ch=document.getElementById('choices');
+  if(tw)tw.classList.remove('urgent');
+  if(ch)ch.classList.remove('urgent');
+}
+function updateTimerUI(){
+  var bar=document.getElementById('timer-bar');
+  var num=document.getElementById('timer-num');
+  var tw=document.getElementById('timer-wrap');
+  var ch=document.getElementById('choices');
+  if(!bar||!num)return;
+  var pct=(_timerSec/TIMER_MAX)*100;
+  bar.style.width=Math.max(0,pct)+'%';
+  num.textContent=Math.max(0,_timerSec);
+  // Urgent mode: 5 seconds or less
+  var urgent=_timerSec<=5&&_timerSec>0;
+  if(tw)tw.classList.toggle('urgent',urgent);
+  if(ch)ch.classList.toggle('urgent',urgent);
+  // Bar color shift as time decreases
+  if(_timerSec<=5){
+    bar.style.background='linear-gradient(90deg,#E53935,#FF6B9D)';
+  }else if(_timerSec<=10){
+    bar.style.background='linear-gradient(90deg,#FF9800,#FF6B9D)';
+  }else{
+    bar.style.background='linear-gradient(90deg,#9C27B0,#FF6B9D)';
+  }
+}
 function renderQ(){
   const q=S.qs[S.idx];
   document.getElementById('prog-fill').style.width=(S.idx/10*100)+'%';
@@ -647,6 +734,7 @@ function renderQ(){
     playComboSfx(S.combo);
   }
   updateHintBtn();
+  startTimer();
 }
 function updateHintBtn(){
   const btn=document.getElementById('hint-btn');
@@ -666,6 +754,7 @@ function useHint(){
 function answer(chosen,btn,q){
   if(S.answered)return;
   S.answered=true;
+  stopTimer();
   const ok=chosen===q.answer;
   document.querySelectorAll('.choice').forEach(b=>{
     b.disabled=true;
@@ -952,6 +1041,38 @@ function buildLevelGrid(){
     </button>`).join('');
 }
 
+
+// ── PATCH NOTE ────────────────────────────────────────────────────
+const PATCH_VER="2026-03-16_1";
+const PATCH_NOTES={
+  ko:"하나의 문제에 대해 시간 제한을 두었어요.\n20초 이내에 답을 찾아보세요! ⏱️",
+  en:"A time limit has been added to each question.\nFind the answer within 20 seconds! ⏱️",
+  ja:"各もんだいに じかんせいげんを もうけました。\n20びょういないに こたえをみつけてね！ ⏱️",
+  zh:"每道题增加了时间限制。\n请在20秒内找到答案！ ⏱️",
+  de:"Für jede Aufgabe gibt es jetzt ein Zeitlimit.\nFinde die Antwort in 20 Sekunden! ⏱️",
+  fr:"Une limite de temps a été ajoutée à chaque question.\nTrouve la réponse en 20 secondes ! ⏱️",
+  es:"Se ha añadido un límite de tiempo a cada pregunta.\n¡Encuentra la respuesta en 20 segundos! ⏱️",
+  pt:"Um limite de tempo foi adicionado a cada questão.\nEncontre a resposta em 20 segundos! ⏱️",
+  it:"È stato aggiunto un limite di tempo per ogni domanda.\nTrova la risposta entro 20 secondi! ⏱️",
+};
+function checkPatchNote(){
+  try{
+    var seen=localStorage.getItem('roah_patch_seen');
+    if(seen===PATCH_VER)return;
+  }catch(e){return;}
+  var overlay=document.getElementById('patch-overlay');
+  var verEl=document.getElementById('patch-ver');
+  var contentEl=document.getElementById('patch-content');
+  if(!overlay)return;
+  if(verEl)verEl.textContent=PATCH_VER;
+  if(contentEl)contentEl.textContent=PATCH_NOTES[lang]||PATCH_NOTES.ko;
+  overlay.style.display='flex';
+}
+function closePatch(){
+  try{localStorage.setItem('roah_patch_seen',PATCH_VER);}catch(e){}
+  var overlay=document.getElementById('patch-overlay');
+  if(overlay)overlay.style.display='none';
+}
 // ═══════════════════════════════════════════════════════════
 //  PWA
 // ═══════════════════════════════════════════════════════════
@@ -986,6 +1107,8 @@ function init(){
     setTimeout(function(){
       if(window.speechSynthesis){window.speechSynthesis.getVoices();setTimeout(playTTS,600);}
     },300);
+    // Show patch note if new version
+    setTimeout(checkPatchNote, 800);
     // Start blinking subtitle after 3 seconds
     setTimeout(function(){
       var el=document.getElementById('t-sub');
@@ -1003,5 +1126,14 @@ if(document.readyState==='loading'){
   init();
 }
 </script>
+
+<div class="patch-overlay" id="patch-overlay" style="display:none">
+  <div class="patch-box">
+    <div class="patch-title">📋 PATCH NOTE</div>
+    <div class="patch-ver" id="patch-ver">2026-03-16_1</div>
+    <div class="patch-content" id="patch-content"></div>
+    <button class="patch-close" onclick="closePatch()">확인했어요! 👍</button>
+  </div>
+</div>
 </body>
 </html>
