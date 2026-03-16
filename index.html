@@ -387,7 +387,7 @@ function playTTS(){
   u.onend=u.onerror=()=>{ttsPlaying=false;btn.style.background='';};
   window.speechSynthesis.speak(u);
 }
-if(window.speechSynthesis)window.speechSynthesis.onvoiceschanged=()>{};
+if(window.speechSynthesis)window.speechSynthesis.onvoiceschanged=function(){};
 
 // ═══════════════════════════════════════════════════════════
 //  AUDIO
